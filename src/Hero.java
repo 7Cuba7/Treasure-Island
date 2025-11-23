@@ -1,17 +1,27 @@
-public class Hero {
+public class Hero implements GameObject {
     private Position position;
     private int health;
     private boolean hasTreasure;
-    private static final int MAX_HEALTH = 10;
 
     public Hero() {
-        this.position = new Position(0, 0);
-        this.health = MAX_HEALTH;
+        this.position = new Position(GameConstants.HERO_START_ROW, GameConstants.HERO_START_COL);
+        this.health = GameConstants.HERO_MAX_HEALTH;
         this.hasTreasure = false;
     }
 
+    @Override
     public Position getPosition() {
         return position;
+    }
+
+    @Override
+    public boolean isAtPosition(Position pos) {
+        return position.equals(pos);
+    }
+
+    @Override
+    public char getDisplayChar() {
+        return 'H';
     }
 
     public int getHealth() {

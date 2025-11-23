@@ -38,10 +38,6 @@ public class GameMap {
         }
     }
 
-    public char[][] getBaseMap() {
-        return baseMap;
-    }
-
     public boolean isWalkable(Position pos) {
         if (!pos.isValid(SIZE, SIZE)) {
             return false;
@@ -49,18 +45,12 @@ public class GameMap {
         return baseMap[pos.getRow()][pos.getCol()] == '.';
     }
 
-    public boolean isObstacle(Position pos) {
-        if (!pos.isValid(SIZE, SIZE)) {
-            return true;
-        }
-        return baseMap[pos.getRow()][pos.getCol()] == '#';
-    }
 
     public int getSize() {
         return SIZE;
     }
 
-    public void display(Hero hero, Treasure treasure, java.util.ArrayList<Trap> traps, java.util.ArrayList<Guardian> guardians, String message) {
+    public void display(Hero hero, Treasure treasure, java.util.List<Trap> traps, java.util.List<Guardian> guardians, String message) {
 
         clearScreen();
 
@@ -113,7 +103,7 @@ public class GameMap {
         System.out.println("\n=== STATUS ===");
         System.out.println("Health: " + hero.getHealth() + " HP");
         System.out.println("Treasure: " + (hero.hasTreasure() ? "COLLECTED" : "Not collected"));
-        System.out.println("\nControls: W (up), A (left), S (down), D (right), Q (quit)");
+        //System.out.println("\nControls: W (up), A (left), S (down), D (right), Q (quit)");
         
 
         if (message != null && !message.isEmpty()) {

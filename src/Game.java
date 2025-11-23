@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import java.io.IOException;
 
@@ -6,8 +7,10 @@ public class Game {
     private GameMap map;
     private Hero hero;
     private Treasure treasure;
-    private ArrayList<Trap> traps;
-    private ArrayList<Guardian> guardians;
+    private List<Trap> traps;
+    private List<Guardian> guardians;
+    private EntityFactory entityFactory;
+    private CollisionHandler collisionHandler;
     private Random random;
     private boolean gameOver;
     private String lastMessage;
@@ -16,41 +19,43 @@ public class Game {
         this.map = new GameMap();
         this.hero = new Hero();
         this.treasure = new Treasure();
-        this.traps = new ArrayList<>();
-        this.guardians = new ArrayList<>();
         this.random = new Random();
         this.gameOver = false;
         this.lastMessage = "";
+        this.entityFactory = new EntityFactory(map);
+        initializeEntities();
+        this.collisionHandler = new CollisionHandler(hero, treasure, traps, guardians);
+    }
+
+    private void initializeEntities() {
+        int trapCount = random.nextInt(GameConstants.MAX_TRAP_COUNT - GameConstants.MIN_TRAP_COUNT + 1)
+                        + GameConstants.MIN_TRAP_COUNT;
+        int guardianCount = random.nextInt(GameConstants.MAX_GUARDIAN_COUNT - GameConstants.MIN_GUARDIAN_COUNT + 1)
+                            + GameConstants.MIN_GUARDIAN_COUNT;
+
+        this.traps = entityFactory.createTraps(trapCount, hero.getPosition(), treasure.getPosition());
+        this.guardians = entityFactory.createGuardians(guardianCount, hero.getPosition(), treasure.getPosition());
     }
 
     public void start() {
-        initializeGame();
+        displayWelcomeMessage();
         gameLoop();
     }
 
-    private void initializeGame() {
-
-        int trapCount = random.nextInt(4) + 3;
-        for (int i = 0; i < trapCount; i++) {
-            Position pos = getRandomWalkablePosition();
-            traps.add(new Trap(pos));
-        }
-
-        int guardianCount = random.nextInt(3) + 3;
-        for (int i = 0; i < guardianCount; i++) {
-            Position pos = getRandomWalkablePosition();
-            guardians.add(new Guardian(pos));
-        }
-
+    private void displayWelcomeMessage() {
         System.out.println("\nMISSION:");
         System.out.println("   Find the treasure at the bottom-right corner");
         System.out.println("   and return to the starting point!");
         System.out.println("\nISLAND DANGERS:");
-        System.out.println("   Traps: " + trapCount + " (1 damage each)");
-        System.out.println("   Guardians: " + guardianCount + " (2 damage if you lose minigame)");
-        System.out.println("\nYour Health: 10 HP");
+        System.out.println("   Traps: " + traps.size() + " (Basic: 1 damage, Heavy: 2 damage)");
+        System.out.println("   Guardians: " + guardians.size() + " (" + GameConstants.GUARDIAN_DAMAGE + " damage if you lose minigame)");
+        System.out.println("\nYour Health: " + GameConstants.HERO_MAX_HEALTH + " HP");
         System.out.println("\nControls: W (up), A (left), S (down), D (right)");
         System.out.println("\nPress any key to begin...");
+        waitForInput();
+    }
+
+    private void waitForInput() {
         try {
             System.in.read();
         } catch (IOException e) {
@@ -60,20 +65,15 @@ public class Game {
 
     private void gameLoop() {
         try {
-
             while (!gameOver && hero.isAlive()) {
                 map.display(hero, treasure, traps, guardians, lastMessage);
 
-
-                if (hero.hasTreasure() && hero.getPosition().equals(new Position(0, 0))) {
-                    win();
+                if (checkWinCondition()) {
+                    displayWinMessage();
                     break;
                 }
 
-                // input
-                int ch = System.in.read();
-                char input = Character.toLowerCase((char) ch);
-
+                char input = readPlayerInput();
                 if (input == 'q') {
                     System.out.println("Thanks for playing!");
                     gameOver = true;
@@ -81,180 +81,118 @@ public class Game {
                 }
 
                 processMove(String.valueOf(input));
-
-
-                Thread.sleep(50);
+                Thread.sleep(GameConstants.GAME_LOOP_DELAY_MS);
             }
 
             if (!hero.isAlive()) {
-                lose();
+                displayLoseMessage();
             }
 
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
         }
     }
 
+    private boolean checkWinCondition() {
+        return hero.hasTreasure() && hero.isAtPosition(new Position(GameConstants.HERO_START_ROW, GameConstants.HERO_START_COL));
+    }
 
+    private char readPlayerInput() throws IOException {
+        int ch = System.in.read();
+        return Character.toLowerCase((char) ch);
+    }
 
     private void processMove(String input) {
         Position oldPos = new Position(hero.getPosition().getRow(), hero.getPosition().getCol());
 
+        if (!moveHero(input)) {
+            return;
+        }
 
+        if (!isValidMove()) {
+            revertMove(oldPos);
+            lastMessage = "Cannot move there! (Obstacle or out of bounds)";
+            return;
+        }
+
+        lastMessage = collisionHandler.checkCollisions();
+
+        if (hero.hasTreasure() && lastMessage.contains("TREASURE")) {
+            relocateObstacles();
+        }
+    }
+
+    private boolean moveHero(String input) {
         switch (input) {
             case "w":
                 hero.moveUp();
-                break;
+                return true;
             case "s":
                 hero.moveDown();
-                break;
+                return true;
             case "a":
                 hero.moveLeft();
-                break;
+                return true;
             case "d":
                 hero.moveRight();
-                break;
+                return true;
             default:
                 lastMessage = "Invalid input! Use W, A, S, D to move.";
-                return;
+                return false;
         }
-
-
-        if (!map.isWalkable(hero.getPosition())) {
-            lastMessage = "Cannot move there! (Obstacle or out of bounds)";
-            hero.getPosition().setRow(oldPos.getRow());
-            hero.getPosition().setCol(oldPos.getCol());
-            return;
-        }
-
-        // Check treasure
-        if (!hero.hasTreasure() && treasure.isAtPosition(hero.getPosition())) {
-            treasure.collect();
-            hero.setTreasure(true);
-            lastMessage = "*** YOU FOUND THE TREASURE! Return to start [0][0]! ***";
-            relocateTrapsAndGuardians();
-            return;
-        }
-
-        // Check trap
-        for (Trap trap : traps) {
-            if (!trap.isRevealed() && trap.isAtPosition(hero.getPosition())) {
-                trap.reveal();
-                hero.takeDamage(trap.getDamage());
-                lastMessage = "*** TRAP! You took " + trap.getDamage() + " damage! ***";
-                return;
-            }
-        }
-
-        // Check guardian
-        for (Guardian guardian : guardians) {
-            if (!guardian.isRevealed() && guardian.isAtPosition(hero.getPosition())) {
-                guardian.reveal();
-
-                
-                boolean won = guardian.combat();
-
-                
-                if (won) {
-                    lastMessage = "*** GUARDIAN! You defeated it! ***";
-                } else {
-                    hero.takeDamage(guardian.getDamage());
-                    lastMessage = "*** GUARDIAN! It hit you for " + guardian.getDamage() + " damage! ***";
-                }
-                
-                return;
-            }
-        }
-
-
-        lastMessage = "";
     }
 
-    private void relocateTrapsAndGuardians() {
-        
+    private boolean isValidMove() {
+        return map.isWalkable(hero.getPosition());
+    }
 
-        ArrayList<Trap> newTraps = new ArrayList<>();
-        ArrayList<Guardian> newGuardians = new ArrayList<>();
-        
+    private void revertMove(Position oldPos) {
+        hero.getPosition().setRow(oldPos.getRow());
+        hero.getPosition().setCol(oldPos.getCol());
+    }
+
+    private void relocateObstacles() {
+        List<Trap> activeTraps = new ArrayList<>();
+        List<Guardian> activeGuardians = new ArrayList<>();
+        List<Obstacle> allObstacles = new ArrayList<>();
+
         for (Trap trap : traps) {
             if (!trap.isRevealed()) {
-                Position newPos = getRandomWalkablePositionExcludingHero();
+                Position newPos = entityFactory.getRandomWalkablePositionExcluding(hero.getPosition(), allObstacles);
                 trap.setPosition(newPos);
-                newTraps.add(trap);
+                activeTraps.add(trap);
+                allObstacles.add(trap);
             }
         }
-        
+
         for (Guardian guardian : guardians) {
             if (!guardian.isRevealed()) {
-                Position newPos = getRandomWalkablePositionExcludingHero();
+                Position newPos = entityFactory.getRandomWalkablePositionExcluding(hero.getPosition(), allObstacles);
                 guardian.setPosition(newPos);
-                newGuardians.add(guardian);
+                activeGuardians.add(guardian);
+                allObstacles.add(guardian);
             }
         }
-        
-        traps = newTraps;
-        guardians = newGuardians;
+
+        traps = activeTraps;
+        guardians = activeGuardians;
+        collisionHandler.setTraps(traps);
+        collisionHandler.setGuardians(guardians);
     }
 
-    private Position getRandomWalkablePosition() {
-        Position pos;
-        do {
-            int row = random.nextInt(map.getSize());
-            int col = random.nextInt(map.getSize());
-            pos = new Position(row, col);
-        } while (!map.isWalkable(pos) || 
-                 pos.equals(new Position(0, 0)) || 
-                 pos.equals(treasure.getPosition()) ||
-                 isPositionOccupied(pos));
-        return pos;
-    }
-
-    private Position getRandomWalkablePositionExcludingHero() {
-        Position pos;
-        do {
-            int row = random.nextInt(map.getSize());
-            int col = random.nextInt(map.getSize());
-            pos = new Position(row, col);
-        } while (!map.isWalkable(pos) || 
-                 pos.equals(hero.getPosition()) ||
-                 isPositionOccupied(pos));
-        return pos;
-    }
-
-    private boolean isPositionOccupied(Position pos) {
-        for (Trap trap : traps) {
-            if (trap.isAtPosition(pos)) {
-                return true;
-            }
-        }
-        for (Guardian guardian : guardians) {
-            if (guardian.isAtPosition(pos)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    private void win() {
+    private void displayWinMessage() {
         map.display(hero, treasure, traps, guardians, lastMessage);
         System.out.println("\n========================================");
         System.out.println("     CONGRATULATIONS! YOU WON!");
-        System.out.println();
-        System.out.println("  You found the treasure and made");
-        System.out.println("  it back alive!");
-        System.out.println();
+        System.out.println("  You found the treasure and made it back alive!");
         System.out.println("  Final Health: " + hero.getHealth() + " HP");
         System.out.println("========================================");
     }
 
-    private void lose() {
+    private void displayLoseMessage() {
         map.display(hero, treasure, traps, guardians, lastMessage);
         System.out.println("\n========================================");
         System.out.println("            GAME OVER");
-        System.out.println();
         System.out.println("  You have perished on the island.");
         System.out.println("  Better luck next time!");
         System.out.println("========================================");

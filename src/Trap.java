@@ -1,35 +1,17 @@
-public class Trap {
-    private Position position;
-    private boolean revealed;
-    private static final int DAMAGE = 1;
+public abstract class Trap extends Obstacle {
 
     public Trap(Position position) {
-        this.position = position;
-        this.revealed = false;
+        super(position);
     }
 
-    public Position getPosition() {
-        return position;
+    @Override
+    public void onEncounter(Hero hero) {
+        reveal();
+        hero.takeDamage(getDamage());
     }
 
-    public void setPosition(Position position) {
-        this.position = position;
-        this.revealed = false;
-    }
-
-    public boolean isRevealed() {
-        return revealed;
-    }
-
-    public void reveal() {
-        this.revealed = true;
-    }
-
-    public int getDamage() {
-        return DAMAGE;
-    }
-
-    public boolean isAtPosition(Position pos) {
-        return position.equals(pos);
+    @Override
+    public char getDisplayChar() {
+        return 'T';
     }
 }
